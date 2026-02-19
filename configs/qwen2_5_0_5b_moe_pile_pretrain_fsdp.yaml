@@ -1,0 +1,117 @@
+# From-scratch pretraining: Qwen2.5-0.5B architecture + MoE MLP (Top-2 placeholder)
+# Dataset: The Pile (streaming)
+#
+# IMPORTANT:
+#   * This run DOES NOT load any pretrained weights (we are changing the MLP to IoE/MoE).
+#   * We still use Qwen2.5's tokenizer files (vocab/merges) for convenient tokenization.
+#
+# Suggested launch on an 8x MI250X node (16 ROCm devices):
+#   ./scripts/launch_mi250x_fsdp_pretrain.sh configs/qwen2_5_0_5b_moe_pile_pretrain_fsdp.yaml
+
+# -----------------------------
+# Paths
+# -----------------------------
+tokenizer_dir: /data/tokenizers/Qwen2.5-0.5B-Instruct
+output_dir: /data/outputs/qwen2_5_0_5b_moe_pile_pretrain
+
+# -----------------------------
+# Runtime
+# -----------------------------
+device: cuda          # ROCm uses the 'cuda' device type string in PyTorch
+dtype: bf16
+
+# -----------------------------
+# Training
+# -----------------------------
+max_steps: 2000
+warmup_steps: 200
+min_lr_ratio: 0.1
+
+batch_size: 1
+num_workers: 2
+gradient_accumulation_steps: 8
+clip_grad_norm: 1.0
+
+ignore_index: -100
+
+# MoE aux loss weight used in the recipe:
+load_balancing_loss_weight: 0.01
+
+# Checkpointing
+save_every_n_steps: 500
+resume_from_checkpoint: null
+
+# -----------------------------
+# Tokenizer (Qwen2.5)
+# -----------------------------
+tokenizer:
+  _component_: torchtune.models.qwen2_5.qwen2_5_tokenizer
+  path: ${tokenizer_dir}/vocab.json
+  merges_file: ${tokenizer_dir}/merges.txt
+  max_seq_len: 1024
+
+# -----------------------------
+# Dataset (The Pile, streaming)
+# -----------------------------
+dataset:
+  _component_: ioe_torchtune.datasets.pile_streaming_dataset
+  max_seq_len: 1024
+  split: train
+  shuffle: true
+  shuffle_buffer_size: 10000
+  seed: 42
+  trust_remote_code: true
+  data_dir: /scratch/project_462000872/remoe_repro/pile
+  # cache_dir: /data/hf/datasets
+  # num_samples: 1000   # optional smoke-test cap
+
+# -----------------------------
+# Model (MoE)
+# -----------------------------
+model:
+  _component_: ioe_torchtune.models.qwen2_5_moe.qwen2_5_0_5b_moe
+  num_experts: 8
+  top_k: 2
+  capacity_factor: null
+  router_z_loss_coef: 0.0
+  expert_dropout: 0.0
+
+# -----------------------------
+# Optimizer
+# -----------------------------
+optimizer:
+  _component_: torch.optim.AdamW
+  lr: 3.0e-4
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.1
+  fused: false   # keep false for ROCm portability
+
+# -----------------------------
+# Checkpointer (PyTorch DCP)
+# -----------------------------
+checkpointer:
+  _component_: ioe_torchtune.training.DCPCheckpointer
+  output_dir: ${output_dir}
+
+# -----------------------------
+# FSDP (FSDP2 via torchtune.training.shard_model)
+# -----------------------------
+enable_fsdp: true
+fsdp_cpu_offload: false
+fsdp_reshard_after_forward: true
+
+# -----------------------------
+# Logging
+# -----------------------------
+metric_logger:
+  _component_: torchtune.training.metric_logging.TensorBoardLogger
+  log_dir: ${output_dir}/tb
+  log_every_n_steps: 10
+
+  # --- Alternative: Weights & Biases ---
+  # _component_: torchtune.training.metric_logging.WandBLogger
+  # project: "qwen2_5-ioe-pretrain"
+  # name: "0.5b-top2gating-pile"
+  # save_dir: ${output_dir}
+  # log_every_n_steps: 10

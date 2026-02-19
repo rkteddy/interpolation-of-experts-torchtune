@@ -1,0 +1,64 @@
+# LUMI / AMD ROCm note
+# --------------------
+# PyTorch is provided by LUMI EasyBuild modules (Singularity containers).
+# DO NOT pip-install torch/torchvision/torchaudio into the same venv.
+#
+# Recommended module (latest available in your list):
+#   PyTorch-2.7.1-rocm-6.2.4-python-3.12-singularity-20250827.eb
+# Fallbacks if needed:
+#   PyTorch-2.6.0-rocm-6.2.4-python-3.12-singularity-20250410.eb
+#   PyTorch-2.3.0-rocm-6.2.0-python-3.10-singularity-20241007.eb (if you must use Python 3.10)
+#
+# Install pattern (recommended):
+#   python -m venv --system-site-packages .venv
+#   source .venv/bin/activate
+#   pip install -U pip setuptools wheel
+#   pip install -r requirements.txt
+
+# ----------------------------------------------------------------------------
+# Core framework
+# ----------------------------------------------------------------------------
+# Pin torchtune; keep everything else flexible enough to match torchtune's own
+# dependency constraints (avoids pip resolver conflicts on clusters).
+
+torchtune==0.6.1
+omegaconf==2.3.0
+
+# ----------------------------------------------------------------------------
+# torchtune recipe runtime
+# ----------------------------------------------------------------------------
+pyyaml>=6.0
+packaging>=23.2
+psutil>=5.9
+tqdm>=4.66
+
+# ----------------------------------------------------------------------------
+# HF / dataset stack (used by torchtune checkpointers + alpaca_cleaned)
+# ----------------------------------------------------------------------------
+# NOTE: Do not hard-pin these unless you also pin torchtune's transitive deps
+#       with a lockfile. Torchtune constrains these internally.
+
+datasets>=2.18
+huggingface-hub[hf_transfer]>=0.20
+safetensors>=0.4
+# tokenizers/sentencepiece wheels exist for py3.12; keep loose to avoid conflicts.
+tokenizers>=0.19
+sentencepiece>=0.2
+# Qwen2.5 tokenizer path in torchtune uses merges/vocab; tiktoken is also used.
+tiktoken>=0.6
+
+# ----------------------------------------------------------------------------
+# Logging (optional)
+# ----------------------------------------------------------------------------
+# If you don't need W&B, you can remove wandb.
+
+tensorboard>=2.15
+wandb>=0.16
+
+# ----------------------------------------------------------------------------
+# Common transitive utilities (kept loose)
+# ----------------------------------------------------------------------------
+requests>=2.31
+protobuf>=4.25
+numpy>=1.26
+Pillow>=10.0
